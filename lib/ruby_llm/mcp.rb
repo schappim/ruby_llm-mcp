@@ -10,8 +10,15 @@ loader.setup
 
 module RubyLLM
   module MCP
-    def self.client(*args, **kwargs)
+    module_function
+
+    def client(*args, **kwargs)
       @client ||= Client.new(*args, **kwargs)
+    end
+
+    def support_complex_parameters!
+      require_relative "providers/open_ai/complex_parameter_support"
+      require_relative "providers/anthropic/complex_parameter_support"
     end
   end
 end

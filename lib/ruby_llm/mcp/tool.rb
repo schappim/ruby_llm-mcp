@@ -5,21 +5,6 @@ module RubyLLM
     class Tool < RubyLLM::Tool
       attr_reader :name, :description, :parameters, :mcp_client, :tool_response
 
-      # @tool_response = {
-      #   name: string;          // Unique identifier for the tool
-      #   description?: string;  // Human-readable description
-      #   inputSchema: {         // JSON Schema for the tool's parameters
-      #     type: "object",
-      #     properties: { ... }  // Tool-specific parameters
-      #   },
-      #   annotations?: {        // Optional hints about tool behavior
-      #     title?: string;      // Human-readable title for the tool
-      #     readOnlyHint?: boolean;    // If true, the tool does not modify its environment
-      #     destructiveHint?: boolean; // If true, the tool may perform destructive updates
-      #     idempotentHint?: boolean;  // If true, repeated calls with same args have no additional effect
-      #     openWorldHint?: boolean;   // If true, tool interacts with external entities
-      #   }
-      # }
       def initialize(mcp_client, tool_response)
         super()
         @mcp_client = mcp_client
@@ -41,12 +26,19 @@ module RubyLLM
       def create_parameters(input_schema)
         params = {}
         input_schema["properties"].each_key do |key|
-          param = RubyLLM::Parameter.new(
+          param = RubyLLM::MCP::Parameter.new(
             key,
             type: input_schema["properties"][key]["type"],
             desc: input_schema["properties"][key]["description"],
             required: input_schema["properties"][key]["required"]
           )
+
+          if param.type == "array"
+            param.items = input_schema["properties"][key]["items"]
+          elsif param.type == "object"
+            properties = create_parameters(input_schema["properties"][key]["properties"])
+            param.properties = properties
+          end
 
           params[key] = param
         end
