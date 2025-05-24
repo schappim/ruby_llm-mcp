@@ -15,8 +15,6 @@ end
 RubyLLM::MCP.support_complex_parameters!
 
 # Test with filesystem MCP server using stdio transport
-# Make sure you have @modelcontextprotocol/server-filesystem installed:
-# npm install -g @modelcontextprotocol/server-filesystem
 client = RubyLLM::MCP.client(
   name: "filesystem",
   transport_type: :stdio,

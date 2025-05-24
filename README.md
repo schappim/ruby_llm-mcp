@@ -87,6 +87,14 @@ response = chat.ask("Can you help me search for recent files in my project?")
 puts response
 ```
 
+### Support Complex Parameters
+
+If you want to support complex parameters, like an array of objects it currently requires a patch to RubyLLM itself. This is planned to be temporary until the RubyLLM is updated.
+
+```ruby
+RubyLLM::MCP.support_complex_parameters!
+```
+
 ### Streaming Responses with Tool Calls
 
 ```ruby
