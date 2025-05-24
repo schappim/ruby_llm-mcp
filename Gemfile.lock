@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    ruby_llm-mcp (0.0.1)
+    ruby_llm-mcp (0.0.2)
       faraday (>= 1.10.0)
       faraday-multipart (>= 1)
       faraday-net_http (>= 1)
