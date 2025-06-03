@@ -13,8 +13,8 @@ module RubyLLM
         attr_reader :headers, :id
 
         def initialize(url, event_endpoint, headers: {})
-          @event_url = url
-          @messages_url = event_endpoint # .gsub("sse", "messages")
+          @event_url = event_endpoint
+          @messages_url = url # .gsub("sse", "messages")
           @client_id = SecureRandom.uuid
           @headers = headers.merge({
                                      "Accept" => "text/event-stream",
