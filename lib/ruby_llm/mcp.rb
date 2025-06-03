@@ -6,6 +6,7 @@ require "zeitwerk"
 loader = Zeitwerk::Loader.for_gem_extension(RubyLLM)
 loader.inflector.inflect("mcp" => "MCP")
 loader.inflector.inflect("sse" => "SSE")
+loader.inflector.inflect("ninja_sse" => "NinjaSSE")
 loader.setup
 
 module RubyLLM
