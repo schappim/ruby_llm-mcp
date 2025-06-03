@@ -14,7 +14,7 @@ module RubyLLM
 
         def initialize(url, headers: {})
           @event_url = url
-          @messages_url = url.gsub("sse", "messages")
+          @messages_url = url # .gsub("sse", "messages")
           @client_id = SecureRandom.uuid
           @headers = headers.merge({
                                      "Accept" => "text/event-stream",
