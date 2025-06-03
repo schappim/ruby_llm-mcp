@@ -101,8 +101,9 @@ module RubyLLM
 
         def wait_for_endpoints
           @endpoints_mutex.synchronize do
-            @endpoints_condition.wait(@endpoints_mutex) until @endpoints_ready
+            @endpoints_condition.wait(@endpoints_mutex, 10) until @endpoints_ready || !@running
           end
+          raise "Failed to get endpoints from ninja.ai" unless @endpoints_ready
         end
 
         def start_sse_listener
@@ -110,10 +111,17 @@ module RubyLLM
             return if sse_thread_running?
 
             @sse_thread = Thread.new do
-              listen_for_events while @running
+              begin
+                listen_for_events
+              rescue => e
+                puts "SSE listener error: #{e.message}"
+                # Don't exit the thread, keep it alive
+                sleep 1
+                retry if @running
+              end
             end
 
-            @sse_thread.abort_on_exception = true
+            @sse_thread.abort_on_exception = false
           end
         end
 
@@ -122,55 +130,53 @@ module RubyLLM
         end
 
         def listen_for_events
-          stream_events_from_server
-        rescue Faraday::Error => e
-          handle_connection_error("SSE connection failed", e)
-        rescue StandardError => e
-          handle_connection_error("SSE connection error", e)
+          while @running
+            begin
+              stream_events_from_server
+            rescue Faraday::Error => e
+              handle_connection_error("SSE connection failed", e)
+            rescue StandardError => e
+              handle_connection_error("SSE connection error", e)
+            end
+          end
         end
 
         def stream_events_from_server
           buffer = +""
-          create_sse_connection.get(@connection_url) do |req|
-            setup_request_headers(req)
-            setup_streaming_callback(req, buffer)
-          end
-        end
-
-        def create_sse_connection
-          Faraday.new do |f|
+          
+          conn = Faraday.new do |f|
             f.options.timeout = 300 # 5 minutes
-            f.response :raise_error # raise errors on non-200 responses
+            f.options.open_timeout = 10
           end
-        end
 
-        def setup_request_headers(request)
-          @headers.each do |key, value|
-            request.headers[key] = value
-          end
-        end
-
-        def setup_streaming_callback(request, buffer)
-          request.options.on_data = proc do |chunk, _size, _env|
-            buffer << chunk
-            process_buffer_events(buffer)
-          end
-        end
-
-        def process_buffer_events(buffer)
-          while (event = extract_event(buffer))
-            event_data, buffer = event
-            process_event(event_data) if event_data
+          conn.get(@connection_url) do |req|
+            @headers.each do |key, value|
+              req.headers[key] = value
+            end
+            
+            req.options.on_data = proc do |chunk, _size, _env|
+              return unless @running
+              
+              buffer << chunk
+              
+              while (event_data = extract_complete_event(buffer))
+                event, buffer = event_data
+                process_event(event) if event && event[:data]
+              end
+            end
           end
         end
 
         def handle_connection_error(message, error)
-          puts "#{message}: #{error.message}. Reconnecting in 3 seconds..."
+          puts "#{message}: #{error.message}"
+          return unless @running
+          
+          puts "Reconnecting in 3 seconds..."
           sleep 3
         end
 
         def process_event(raw_event)
-          return if raw_event[:data].nil?
+          return unless raw_event[:data]
 
           case raw_event[:event]
           when "session"
@@ -184,43 +190,52 @@ module RubyLLM
               @endpoints_condition.broadcast
             end
           else
-            # Handle MCP response messages
+            # Handle MCP response messages (JSON-RPC responses)
             begin
-              event = JSON.parse(raw_event[:data])
-              request_id = event["id"]&.to_s
+              event_data = JSON.parse(raw_event[:data])
+              request_id = event_data["id"]&.to_s
 
               @pending_mutex.synchronize do
                 if request_id && @pending_requests.key?(request_id)
                   response_queue = @pending_requests.delete(request_id)
-                  response_queue&.push(event)
+                  response_queue&.push(event_data)
                 end
               end
-            rescue JSON::ParserError => e
-              puts "Error parsing event data: #{e.message}"
+            rescue JSON::ParserError
+              # Not JSON, might be plain text response - ignore or log
             end
           end
         end
 
-        def extract_event(buffer)
+        def extract_complete_event(buffer)
           return nil unless buffer.include?("\n\n")
 
-          raw, rest = buffer.split("\n\n", 2)
-          [parse_event(raw), rest]
+          event_raw, remaining = buffer.split("\n\n", 2)
+          event = parse_sse_event(event_raw)
+          
+          [event, remaining]
         end
 
-        def parse_event(raw)
+        def parse_sse_event(raw)
           event = {}
+          
           raw.each_line do |line|
+            line = line.strip
+            next if line.empty?
+            
             case line
-            when /^data:\s*(.*)/
-              (event[:data] ||= []) << ::Regexp.last_match(1)
-            when /^event:\s*(.*)/
-              event[:event] = ::Regexp.last_match(1)
-            when /^id:\s*(.*)/
-              event[:id] = ::Regexp.last_match(1)
+            when /^data:\s*(.*)$/
+              (event[:data] ||= []) << $1
+            when /^event:\s*(.*)$/
+              event[:event] = $1
+            when /^id:\s*(.*)$/
+              event[:id] = $1
+            when /^retry:\s*(.*)$/
+              event[:retry] = $1.to_i
             end
           end
-          event[:data] = event[:data]&.join("\n")
+          
+          event[:data] = event[:data]&.join("\n") if event[:data]
           event
         end
       end
