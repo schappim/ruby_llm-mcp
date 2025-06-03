@@ -230,31 +230,53 @@ module RubyLLM
             buffer = ""
             chunk_count = 0
             
-            response.read_body do |chunk|
-              chunk_count += 1
-              puts "[NinjaSSE] [Thread] Received chunk #{chunk_count} (#{chunk.bytesize} bytes): #{chunk.inspect}"
+            # Force immediate reading with timeout
+            begin
+              puts "[NinjaSSE] [Thread] Starting to read response body..."
               
-              break unless @running
-              
-              buffer << chunk
-              puts "[NinjaSSE] [Thread] Buffer now contains: #{buffer.inspect}"
-              
-              # Process complete events
-              while buffer.include?("\n\n")
-                puts "[NinjaSSE] [Thread] Found complete event in buffer"
-                event_data, buffer = buffer.split("\n\n", 2)
-                puts "[NinjaSSE] [Thread] Raw event data: #{event_data.inspect}"
-                puts "[NinjaSSE] [Thread] Remaining buffer: #{buffer.inspect}"
+              if response.respond_to?(:read_body)
+                response.read_body do |chunk|
+                  chunk_count += 1
+                  puts "[NinjaSSE] [Thread] Received chunk #{chunk_count} (#{chunk.bytesize} bytes): #{chunk.inspect}"
+                  
+                  break unless @running
+                  
+                  buffer << chunk
+                  puts "[NinjaSSE] [Thread] Buffer now contains: #{buffer.inspect}"
+                  
+                  # Process complete events
+                  while buffer.include?("\n\n")
+                    puts "[NinjaSSE] [Thread] Found complete event in buffer"
+                    event_data, buffer = buffer.split("\n\n", 2)
+                    puts "[NinjaSSE] [Thread] Raw event data: #{event_data.inspect}"
+                    puts "[NinjaSSE] [Thread] Remaining buffer: #{buffer.inspect}"
+                    
+                    event = parse_sse_event(event_data)
+                    puts "[NinjaSSE] [Thread] Parsed event: #{event.inspect}"
+                    
+                    if event && !event.empty?
+                      process_event(event)
+                    else
+                      puts "[NinjaSSE] [Thread] Skipping empty or invalid event"
+                    end
+                  end
+                end
+              else
+                puts "[NinjaSSE] [Thread] Response doesn't support read_body, trying body method..."
+                body = response.body
+                puts "[NinjaSSE] [Thread] Full body: #{body.inspect}"
+                buffer << body if body
                 
-                event = parse_sse_event(event_data)
-                puts "[NinjaSSE] [Thread] Parsed event: #{event.inspect}"
-                
-                if event && !event.empty?
-                  process_event(event)
-                else
-                  puts "[NinjaSSE] [Thread] Skipping empty or invalid event"
+                # Process complete events
+                while buffer.include?("\n\n")
+                  event_data, buffer = buffer.split("\n\n", 2)
+                  event = parse_sse_event(event_data)
+                  process_event(event) if event && !event.empty?
                 end
               end
+            rescue => e
+              puts "[NinjaSSE] [Thread] Error reading body: #{e.message}"
+              puts "[NinjaSSE] [Thread] Backtrace: #{e.backtrace.first(3)}"
             end
             
             puts "[NinjaSSE] [Thread] SSE stream ended (read #{chunk_count} chunks total)"
@@ -315,6 +337,8 @@ module RubyLLM
             end
           end
         end
+
+
 
         def parse_sse_event(event_data)
           puts "[NinjaSSE] [Thread] Parsing SSE event from: #{event_data.inspect}"
