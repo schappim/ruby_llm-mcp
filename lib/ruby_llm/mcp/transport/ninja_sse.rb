@@ -5,6 +5,7 @@ require "uri"
 require "net/http"
 require "timeout"
 require "securerandom"
+require "zlib"
 
 module RubyLLM
   module MCP
@@ -223,16 +224,37 @@ module RubyLLM
             end
 
             puts "[NinjaSSE] [Thread] SSE stream established, reading body..."
+            
+            # Check if response is gzipped
+            is_gzipped = response['content-encoding'] == 'gzip'
+            puts "[NinjaSSE] [Thread] Response is gzipped: #{is_gzipped}"
+            
             buffer = ""
             chunk_count = 0
+            inflater = is_gzipped ? Zlib::Inflate.new(Zlib::MAX_WBITS + 16) : nil
             
             response.read_body do |chunk|
               chunk_count += 1
-              puts "[NinjaSSE] [Thread] Received chunk #{chunk_count} (#{chunk.bytesize} bytes): #{chunk.inspect}"
+              puts "[NinjaSSE] [Thread] Received raw chunk #{chunk_count} (#{chunk.bytesize} bytes)"
               
               break unless @running
               
-              buffer << chunk
+              # Decompress chunk if gzipped
+              if is_gzipped && inflater
+                begin
+                  decompressed_chunk = inflater.inflate(chunk)
+                  puts "[NinjaSSE] [Thread] Decompressed chunk #{chunk_count} (#{decompressed_chunk.bytesize} bytes): #{decompressed_chunk.inspect}"
+                  buffer << decompressed_chunk
+                rescue Zlib::BufError
+                  # Incomplete gzip data, wait for more chunks
+                  puts "[NinjaSSE] [Thread] Incomplete gzip data in chunk #{chunk_count}, waiting for more"
+                  next
+                end
+              else
+                puts "[NinjaSSE] [Thread] Raw chunk #{chunk_count}: #{chunk.inspect}"
+                buffer << chunk
+              end
+              
               puts "[NinjaSSE] [Thread] Buffer now contains: #{buffer.inspect}"
               
               # Process complete events
@@ -252,6 +274,9 @@ module RubyLLM
                 end
               end
             end
+            
+            # Clean up inflater
+            inflater&.close
             
             puts "[NinjaSSE] [Thread] SSE stream ended (read #{chunk_count} chunks total)"
           end
