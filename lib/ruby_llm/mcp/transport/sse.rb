@@ -12,9 +12,9 @@ module RubyLLM
       class SSE
         attr_reader :headers, :id
 
-        def initialize(url, headers: {})
+        def initialize(url, event_endpoint, headers: {})
           @event_url = url
-          @messages_url = url # .gsub("sse", "messages")
+          @messages_url = event_endpoint # .gsub("sse", "messages")
           @client_id = SecureRandom.uuid
           @headers = headers.merge({
                                      "Accept" => "text/event-stream",

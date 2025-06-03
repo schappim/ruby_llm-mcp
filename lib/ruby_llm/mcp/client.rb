@@ -14,7 +14,7 @@ module RubyLLM
         # TODO: Add streamable HTTP
         case @transport_type
         when :sse
-          @transport = RubyLLM::MCP::Transport::SSE.new(@config[:url])
+          @transport = RubyLLM::MCP::Transport::SSE.new(@config[:url], @config[:event_endpoint])
         when :stdio
           @transport = RubyLLM::MCP::Transport::Stdio.new(@config[:command], args: @config[:args], env: @config[:env])
         else
