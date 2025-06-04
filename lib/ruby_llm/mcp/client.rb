@@ -14,7 +14,7 @@ module RubyLLM
         # TODO: Add streamable HTTP
         case @transport_type
         when :sse
-          @transport = RubyLLM::MCP::Transport::SSE.new(@config[:url], @config[:event_endpoint])
+          @transport = RubyLLM::MCP::Transport::SSE.new(@config[:url])
         when :ninja_sse
           @transport = RubyLLM::MCP::Transport::NinjaSSE.new(@config[:url])
         when :stdio
@@ -60,6 +60,7 @@ module RubyLLM
 
       def tool_list_request
         @tool_request = RubyLLM::MCP::Requests::ToolList.new(self).call
+        @tool_request
       end
 
       def execute_tool_request(name:, parameters:)

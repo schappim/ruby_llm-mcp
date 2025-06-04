@@ -16,7 +16,7 @@ client = RubyLLM::MCP.client(
   name: "local_mcp",
   transport_type: "sse",
   config: {
-    url: "http://localhost:9292/mcp/sse"
+    url: "https://mcp.ninja.ai/connect/4SEwn_CrxnD3cPQb4w38nhXxSnJpDQux0g_yMczU2Ccur60OuUC3Ibmr"
   }
 )
 

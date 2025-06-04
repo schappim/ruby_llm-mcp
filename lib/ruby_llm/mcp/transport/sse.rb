@@ -10,16 +10,20 @@ module RubyLLM
   module MCP
     module Transport
       class SSE
-        attr_reader :headers, :id
+        attr_reader :headers, :id, :messages_url, :session_id
 
-        def initialize(url, event_endpoint, headers: {})
-          @event_url = event_endpoint
-          @messages_url = url # .gsub("sse", "messages")
+        def initialize(url, headers: {})
+          @event_url = url
+          @messages_url = nil
+          @session_id = nil
+          @endpoint_ready = false
+          @endpoint_condition = ConditionVariable.new
           @client_id = SecureRandom.uuid
           @headers = headers.merge({
                                      "Accept" => "text/event-stream",
                                      "Cache-Control" => "no-cache",
                                      "Connection" => "keep-alive",
+                                     "Accept-Encoding" => "identity",
                                      "X-CLIENT-ID" => @client_id
                                    })
 
@@ -36,6 +40,24 @@ module RubyLLM
         end
 
         def request(body, wait_for_response: true)
+          # Wait for the endpoint to be ready with timeout
+          @connection_mutex.synchronize do
+            timeout_time = Time.now + 30 # 30 second timeout
+            until @endpoint_ready
+              time_left = timeout_time - Time.now
+              if time_left <= 0
+                raise RubyLLM::MCP::Errors::TimeoutError.new(message: "Endpoint not ready after 30 seconds")
+              end
+
+              @endpoint_condition.wait(@connection_mutex, time_left)
+            end
+          end
+
+          # Validate that we have a valid messages URL
+          if @messages_url.nil? || @messages_url.empty?
+            raise StandardError.new("Messages URL not available - endpoint event may not have been received")
+          end
+
           # Generate a unique request ID
           @id_mutex.synchronize { @id_counter += 1 }
           request_id = @id_counter
@@ -63,8 +85,7 @@ module RubyLLM
               req.headers["Content-Type"] = "application/json"
               req.body = JSON.generate(body)
             end
-
-            unless response.status == 200
+            unless [200, 202].include?(response.status)
               @pending_mutex.synchronize { @pending_requests.delete(request_id.to_s) }
               raise "Failed to request #{@messages_url}: #{response.status} - #{response.body}"
             end
@@ -101,7 +122,9 @@ module RubyLLM
             end
 
             @sse_thread.abort_on_exception = true
-            sleep 0.1 # Wait for the SSE connection to be established
+            puts "[SSE] Waiting for SSE connection to establish..."
+            sleep 1.1 # Wait for the SSE connection to be established
+            puts "[SSE] SSE connection setup complete"
           end
         end
 
@@ -146,20 +169,44 @@ module RubyLLM
         end
 
         def process_buffer_events(buffer)
-          while (event = extract_event(buffer))
-            event_data, buffer = event
+          while (event_data = extract_event(buffer))
             process_event(event_data) if event_data
           end
         end
 
         def handle_connection_error(message, error)
           puts "#{message}: #{error.message}. Reconnecting in 3 seconds..."
-          sleep 3
+
+          # Reset endpoint state since we'll need new session/endpoint events
+          @connection_mutex.synchronize do
+            @endpoint_ready = false
+            @messages_url = nil
+            @session_id = nil
+          end
+
+          sleep 0.5
         end
 
         def process_event(raw_event)
           return if raw_event[:data].nil?
 
+          # Handle special session/endpoint events
+          if raw_event[:event] == "session"
+            @session_id = raw_event[:data].strip
+            puts "[SSE] Received session ID: #{@session_id}"
+            return
+          elsif raw_event[:event] == "endpoint"
+            @messages_url = raw_event[:data].strip
+            puts "[SSE] Received endpoint URL: #{@messages_url}"
+            @connection_mutex.synchronize do
+              @endpoint_ready = true
+              @endpoint_condition.broadcast
+            end
+            puts "[SSE] Endpoint ready, signaling waiting requests"
+            return
+          end
+
+          # Handle regular MCP events (JSON)
           event = begin
             JSON.parse(raw_event[:data])
           rescue StandardError
@@ -172,7 +219,12 @@ module RubyLLM
           @pending_mutex.synchronize do
             if request_id && @pending_requests.key?(request_id)
               response_queue = @pending_requests.delete(request_id)
+              puts "[SSE] Found pending request #{request_id}, delivering response"
               response_queue&.push(event)
+            elsif request_id.nil? || request_id.empty?
+              puts "[SSE] Received event without ID (likely notification): #{event['method']}"
+            else
+              puts "[SSE] No pending request found for ID #{request_id}"
             end
           end
         rescue JSON::ParserError => e
@@ -183,7 +235,8 @@ module RubyLLM
           return nil unless buffer.include?("\n\n")
 
           raw, rest = buffer.split("\n\n", 2)
-          [parse_event(raw), rest]
+          buffer.replace(rest)
+          parse_event(raw)
         end
 
         def parse_event(raw)
