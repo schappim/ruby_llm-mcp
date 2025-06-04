@@ -123,7 +123,7 @@ module RubyLLM
 
             @sse_thread.abort_on_exception = true
             puts "[SSE] Waiting for SSE connection to establish..."
-            sleep 1.1 # Wait for the SSE connection to be established
+            sleep 0.1 # Wait for the SSE connection to be established
             puts "[SSE] SSE connection setup complete"
           end
         end
@@ -184,7 +184,7 @@ module RubyLLM
             @session_id = nil
           end
 
-          sleep 0.5
+          sleep 0.1
         end
 
         def process_event(raw_event)
