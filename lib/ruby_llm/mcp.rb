@@ -6,7 +6,6 @@ require "zeitwerk"
 loader = Zeitwerk::Loader.for_gem_extension(RubyLLM)
 loader.inflector.inflect("mcp" => "MCP")
 loader.inflector.inflect("sse" => "SSE")
-loader.inflector.inflect("ninja_sse" => "NinjaSSE")
 loader.setup
 
 module RubyLLM
@@ -14,7 +13,16 @@ module RubyLLM
     module_function
 
     def client(*args, **kwargs)
-      @client ||= Client.new(*args, **kwargs)
+      puts "in client"
+      begin
+        @client ||= Client.new(*args, **kwargs)
+        puts "after client"
+        @client
+      rescue => e
+        puts "Error creating client: #{e.class}: #{e.message}"
+        puts e.backtrace.first(5)
+        raise
+      end
     end
 
     def support_complex_parameters!

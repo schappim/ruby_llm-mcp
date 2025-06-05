@@ -4,6 +4,11 @@ source "https://rubygems.org"
 
 gemspec
 
+# Try alternative HTTP clients for SSE
+gem "httparty"
+gem "em-http-request" 
+gem "typhoeus"
+
 group :development do
   # Development dependencies
   gem "bundler", ">= 2.0"

@@ -2,6 +2,7 @@
 
 require_relative "lib/ruby_llm/mcp/version"
 
+# rubocop:disable Metrics/BlockLength
 Gem::Specification.new do |spec|
   spec.name = "ruby_llm-mcp"
   spec.version = RubyLLM::MCP::VERSION
@@ -29,7 +30,6 @@ Gem::Specification.new do |spec|
   spec.metadata["rubygems_mfa_required"] = "true"
 
   spec.metadata["allowed_push_host"] = "https://rubygems.org"
-  spec.metadata["homepage_uri"] = spec.homepage
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
@@ -43,3 +43,4 @@ Gem::Specification.new do |spec|
   spec.add_dependency "ruby_llm", "~> 1.2"
   spec.add_dependency "zeitwerk", "~> 2"
 end
+# rubocop:enable Metrics/BlockLength

@@ -2,9 +2,7 @@
 
 class RubyLLM::MCP::Requests::Initialization < RubyLLM::MCP::Requests::Base
   def call
-    puts "🌟 init"
     client.request(initialize_body)
-    puts "🌟 init"
   end
 
   private

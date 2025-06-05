@@ -13,6 +13,7 @@ module RubyLLM
         end
 
         def call
+          puts "call in base"
           raise "Not implemented"
         end
 

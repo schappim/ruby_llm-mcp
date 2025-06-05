@@ -14,9 +14,9 @@ module RubyLLM
         # TODO: Add streamable HTTP
         case @transport_type
         when :sse
+          puts "above sse"
           @transport = RubyLLM::MCP::Transport::SSE.new(@config[:url])
-        when :ninja_sse
-          @transport = RubyLLM::MCP::Transport::NinjaSSE.new(@config[:url])
+          puts "below sse"
         when :stdio
           @transport = RubyLLM::MCP::Transport::Stdio.new(@config[:command], args: @config[:args], env: @config[:env])
         else
@@ -35,6 +35,7 @@ module RubyLLM
       end
 
       def tools(refresh: false)
+        puts "in tools"
         @tools = nil if refresh
         @tools ||= fetch_and_create_tools
       end
@@ -59,8 +60,8 @@ module RubyLLM
       end
 
       def tool_list_request
+        puts "tool_list_request"
         @tool_request = RubyLLM::MCP::Requests::ToolList.new(self).call
-        @tool_request
       end
 
       def execute_tool_request(name:, parameters:)
@@ -68,6 +69,7 @@ module RubyLLM
       end
 
       def fetch_and_create_tools
+        puts "fetch_and_create_tools"
         tools_response = tool_list_request
         tools_response = tools_response["result"]["tools"]
 

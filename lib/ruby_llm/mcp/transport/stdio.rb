@@ -150,9 +150,7 @@ module RubyLLM
           response = begin
             JSON.parse(line)
           rescue JSON::ParserError => e
-            puts "Error parsing response as JSON: #{e.message}"
-            puts "Raw response: #{line}"
-            return
+            raise "Error parsing response as JSON: #{e.message}\nRaw response: #{line}"
           end
           request_id = response["id"]&.to_s
 
